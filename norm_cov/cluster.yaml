@@ -1,0 +1,22 @@
+__default__:
+    mem: 50G
+    queue: normal
+    time: "05:00:00"
+    jobfs: 4G
+    project: xf3
+    name: "{rule}" 
+    threads: 2
+
+window_prep:
+    name: "window_prep"
+    queue: normal
+    time: "1:00:00"
+    threads: 1
+    mem: 10G
+
+samtools_bedcov:
+    queue: normal
+    time: "20:00:00"
+    threads: 1
+    mem: 5G
+    jobfs: 1G

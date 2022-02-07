@@ -1,0 +1,90 @@
+import os
+import glob
+configfile: "norm_cov_config.yaml"
+
+RNAseq_replicates = ["1","2","3"]
+bedchunk_ID = sorted([int(i.split('chunk_')[-1]) for i in glob.glob(f'{config["OUTPUT_PATH"] + "/" + config["date"] + "/tmp_bedchunk"}/*')])
+
+
+rule all:
+    input:
+        config["REF_fa"] + ".fai",
+        
+        os.path.dirname(config["REF_fa"]) + "/" + os.path.basename(config["REF_fa"]).split(".fa")[0] + ".genome_file",
+        
+        config["OUTPUT_PATH"] + "/" + config["date"] + "/" + os.path.basename(config["REF_fa"]).replace(".fa", f".w{config['window_size']}s{config['overlap_size']}.bed"),
+        config["OUTPUT_PATH"] + "/" + config["date"] + "/tmp_bedchunk",
+        
+        expand(config["OUTPUT_PATH"] + "/" + config["date"] + "/tmp_samcov/{RNAseq_stage}_{RNAseq_replicates}/{RNAseq_stage}_{RNAseq_replicates}." + os.path.basename(config["REF_fa"]).replace(".fa", f".w{config['window_size']}s{config['overlap_size']}.samcov_") + "{bedchunk_ID}", bedchunk_ID=bedchunk_ID, RNAseq_stage=config["RNAseq_stage"], RNAseq_replicates=RNAseq_replicates)
+        
+        
+
+
+rule faidx_genome:
+    input:
+        fa = config["REF_fa"]
+    output:
+        fai = config["REF_fa"] + ".fai"
+    envmodules:
+        "samtools/1.10"
+    shell:
+        "samtools faidx {input.fa} -o {output.fai}"
+
+
+rule make_genome_file:
+    input:
+        fai = config["REF_fa"] + ".fai"
+    output:
+        genome_file = os.path.dirname(config["REF_fa"]) + "/" + os.path.basename(config["REF_fa"]).split(".fa")[0] + ".genome_file"
+    group:
+        "window_prep"
+    shell:
+        "cat {input.fai} | sort -k1,1n | cut -f1,2 > {output.genome_file}"
+
+
+rule bedtools_window_maker:
+    input:
+        genome_file = os.path.dirname(config["REF_fa"]) + "/" + os.path.basename(config["REF_fa"]).split(".fa")[0] + ".genome_file"
+    output:
+        ref_window_bed = config["OUTPUT_PATH"] + "/" + config["date"] + "/" + os.path.basename(config["REF_fa"]).replace(".fa", f".w{config['window_size']}s{config['overlap_size']}.bed")
+    envmodules:
+        "bedtools/2.28.0"
+    group:
+        "window_prep"
+    shell:
+        "bedtools makewindows -g {input.genome_file} -w {config[window_size]} -s {config[overlap_size]} > {output.ref_window_bed}"
+
+
+rule bed_file_split:
+    input:
+        ref_window_bed = config["OUTPUT_PATH"] + "/" + config["date"] + "/" + os.path.basename(config["REF_fa"]).replace(".fa", f".w{config['window_size']}s{config['overlap_size']}.bed")
+    output:
+        tmp_path = directory(config["OUTPUT_PATH"] + "/" + config["date"] + "/tmp_bedchunk")
+    group:
+        "window_prep"
+    shell:
+        "python {config[norm_expression_script]} refbedsplit \
+        --bed {input.ref_window_bed} \
+        --chunks {config[num_bed_chunks]} \
+        --tmp_path {output.tmp_path}"
+
+
+rule samtools_bedcov:
+    params:
+        lambda wildcards: config["RNAseq_stage"][wildcards.RNAseq_stage],
+        tmpFile = "$PBS_JOBFS/" + os.path.basename(config["REF_fa"]).replace(".fa", f".w{config['window_size']}s{config['overlap_size']}.samcov_") + "{bedchunk_ID}"
+    input:
+        chunk_bed = config["OUTPUT_PATH"] + "/" + config["date"] + "/tmp_bedchunk/" + os.path.basename(config["REF_fa"]).replace(".fa", f".w{config['window_size']}s{config['overlap_size']}.bed_chunk_" + "{bedchunk_ID}"),
+        bam = config["BAM_DIR"] + "/{RNAseq_stage}_{RNAseq_replicates}/{RNAseq_stage}_{RNAseq_replicates}.bam"
+    output:
+        samcov = config["OUTPUT_PATH"] + "/" + config["date"] + "/tmp_samcov/{RNAseq_stage}_{RNAseq_replicates}/{RNAseq_stage}_{RNAseq_replicates}." + os.path.basename(config["REF_fa"]).replace(".fa", f".w{config['window_size']}s{config['overlap_size']}.samcov_") + "{bedchunk_ID}"
+    envmodules:
+        "samtools/1.10"
+    shell:
+        "samtools bedcov {input.chunk_bed} {input.bam} > {params.tmpFile} "
+        "&& cp {params.tmpFile} {output.samcov}"
+        
+
+
+
+

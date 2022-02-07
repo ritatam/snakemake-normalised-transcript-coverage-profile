@@ -1,0 +1,27 @@
+
+date: "20210604"
+
+Pst_strain: "Pst104E"
+
+REF_fa: "/g/data/xf3/ht5438/data/genome/Pst104E/Pst_104E_v13_ph_ctg.fa"
+
+window_size: "1000"
+overlap_size: "200"
+num_bed_chunks: "20"
+
+
+OUTPUT_PATH: "/scratch/xf3/ht5438/norm_cov_output"
+
+BAM_DIR: "/g/data/xf3/ht5438/DE_analysis/20210504/RNAseq_genome_map"
+
+
+norm_expression_script: "/home/106/ht5438/DE_analysis_snake/norm_cov/norm_expression_script.py"
+
+RNAseq_stage:
+    GS: "GS"    # germination
+    HE: "HE"    # haustoria infection
+    # IT0: "IT0"  # infection
+    IT6: "IT6"
+    IT9: "IT9"
+    UG: "UG"    # ungerminated
+    
