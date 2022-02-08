@@ -1,0 +1,38 @@
+
+date: "20210504"
+
+Pst_strain: "Pst104E"
+
+RNAseq_stage:
+    GS: "GS"    # germination
+    HE: "HE"    # haustoria infection
+    IT0: "IT0"  # infection
+    IT6: "IT6"
+    IT9: "IT9"
+    UG: "UG"    # ungerminated
+
+
+
+CDS_fa: "/g/data/xf3/ht5438/data/genome/Pst104E/CDS/Pst_104E_v13_ph_ctg.cds.fa"
+
+REF_fa: "/g/data/xf3/ht5438/data/genome/Pst104E/Pst_104E_v13_ph_ctg.fa"
+
+
+
+OUTDIR_BASE: "/g/data/xf3/ht5438/DE_analysis"
+
+RNASEQ_DIR: "/g/data/xf3/ht5438/data/RNAseq/trimmed"
+
+HISAT2_PATH: "/g/data/xf3/ht5438/softwares/hisat2-2.2.1"
+
+
+
+# ========= parameters ========= #
+
+num_bootstrap: "100"
+
+hisat2_thread: "8"
+
+
+
+

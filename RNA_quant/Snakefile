@@ -1,0 +1,102 @@
+#qsub -I -P xf3 -l walltime=12:00:00 -l ncpus=16 -l mem=50G -l jobfs=4G -l storage=scratch/xf3+gdata/xf3 -q express -l wd
+#snakemake -np
+#snakemake -j16 --use-envmodules -p
+
+import os
+configfile: "config.yaml"
+
+RNAseq_replicates = ["1","2","3"]
+
+rule all:
+    input:
+        config["OUTDIR_BASE"] + "/" + config["Pst_strain"] + "_CDS_index/" + os.path.splitext(os.path.basename(config["CDS_fa"]))[0] + ".idx",
+        expand(config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_quantity/{RNAseq_stage}_{RNAseq_replicates}/abundance.h5", RNAseq_stage=config["RNAseq_stage"], RNAseq_replicates=RNAseq_replicates),
+        expand(config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_quantity/{RNAseq_stage}_{RNAseq_replicates}/abundance.tsv", RNAseq_stage=config["RNAseq_stage"],RNAseq_replicates=RNAseq_replicates),
+        expand(config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_quantity/{RNAseq_stage}_{RNAseq_replicates}/run_info.json", RNAseq_stage=config["RNAseq_stage"],RNAseq_replicates=RNAseq_replicates),
+        multiext(config["OUTDIR_BASE"] + "/Pst104E_ref_index/" + config["Pst_strain"], ".1.ht2", ".2.ht2", ".3.ht2", ".4.ht2", ".5.ht2", ".6.ht2", ".7.ht2", ".8.ht2"),
+        # expand(config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_genome_map/{RNAseq_stage}_{RNAseq_replicates}/{RNAseq_stage}_{RNAseq_replicates}.sam", RNAseq_stage=config["RNAseq_stage"],RNAseq_replicates=RNAseq_replicates),
+        expand(config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_genome_map/{RNAseq_stage}_{RNAseq_replicates}/{RNAseq_stage}_{RNAseq_replicates}.bam", RNAseq_stage=config["RNAseq_stage"],RNAseq_replicates=RNAseq_replicates),
+        expand(config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_genome_map/{RNAseq_stage}_{RNAseq_replicates}/{RNAseq_stage}_{RNAseq_replicates}.bam.bai",RNAseq_stage=config["RNAseq_stage"],RNAseq_replicates=RNAseq_replicates)
+
+
+
+rule kallisto_index_transcriptome:
+    params:
+        index_name = config["OUTDIR_BASE"] + "/" + config["Pst_strain"] + "_CDS_index/" + os.path.splitext(os.path.basename(config["CDS_fa"]))[0] + ".idx",
+        env = "kallisto"
+    output:
+        index_file = config["OUTDIR_BASE"] + "/" + config["Pst_strain"] + "_CDS_index/" + os.path.splitext(os.path.basename(config["CDS_fa"]))[0] + ".idx"
+    shell:
+        "set +eu "
+        " && . $(conda info --base)/etc/profile.d/conda.sh "
+        " && conda activate {params.env} "
+        " && echo $CONDA_PREFIX; "
+        " kallisto index -i {params.index_name} {config[CDS_fa]}"
+
+
+rule kallisto_quant:
+    params:
+        lambda wildcards: config["RNAseq_stage"][wildcards.RNAseq_stage],
+        outpath = config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_quantity/{RNAseq_stage}_{RNAseq_replicates}",
+        env = "kallisto"
+    input:
+        index = config["OUTDIR_BASE"] + "/" + config["Pst_strain"] + "_CDS_index/" + os.path.splitext(os.path.basename(config["CDS_fa"]))[0] + ".idx",
+        transcript_R1 = config["RNASEQ_DIR"] + "/{RNAseq_stage}_{RNAseq_replicates}_R1.paired.fq.gz",
+        transcript_R2 = config["RNASEQ_DIR"] + "/{RNAseq_stage}_{RNAseq_replicates}_R2.paired.fq.gz"
+    output:
+        outfiles = multiext(config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_quantity/{RNAseq_stage}_{RNAseq_replicates}/", "abundance.h5", "abundance.tsv", "run_info.json")
+    shell:
+        "set +eu "
+        " && . $(conda info --base)/etc/profile.d/conda.sh "
+        " && conda activate {params.env} "
+        " && echo $CONDA_PREFIX; "
+        "kallisto quant -i {input.index} -o {params.outpath} -b {config[num_bootstrap]} <(zcat {input.transcript_R1}) <(zcat {input.transcript_R2})"
+
+
+rule hisat2_index_genome:
+    params:
+        index = config["OUTDIR_BASE"] + "/Pst104E_ref_index/" + config["Pst_strain"]
+    output:
+        multiext(config["OUTDIR_BASE"] + "/Pst104E_ref_index/" + config["Pst_strain"], ".1.ht2", ".2.ht2", ".3.ht2", ".4.ht2", ".5.ht2", ".6.ht2", ".7.ht2", ".8.ht2")
+    shell:
+        "export HISAT2_HOME={config[HISAT2_PATH]}; "
+        "$HISAT2_HOME/hisat2-build -p {config[hisat2_thread]} {config[REF_fa]} {params.index}"
+
+
+rule hisat2_genome_mapping:
+    params:
+        index = config["OUTDIR_BASE"] + "/Pst104E_ref_index/" + config["Pst_strain"],
+        summary_txt = config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_genome_map/{RNAseq_stage}_{RNAseq_replicates}/{RNAseq_stage}_{RNAseq_replicates}.txt"
+    input:
+        transcript_R1 = config["RNASEQ_DIR"] + "/{RNAseq_stage}_{RNAseq_replicates}_R1.paired.fq.gz",
+        transcript_R2 = config["RNASEQ_DIR"] + "/{RNAseq_stage}_{RNAseq_replicates}_R2.paired.fq.gz",
+        ht2 = multiext(config["OUTDIR_BASE"] + "/Pst104E_ref_index/" + config["Pst_strain"], ".1.ht2", ".2.ht2", ".3.ht2", ".4.ht2", ".5.ht2", ".6.ht2", ".7.ht2", ".8.ht2")
+    output:
+        sam = config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_genome_map/{RNAseq_stage}_{RNAseq_replicates}/{RNAseq_stage}_{RNAseq_replicates}.sam"
+    shell:
+        "export HISAT2_HOME={config[HISAT2_PATH]}; "
+        "$HISAT2_HOME/hisat2 -p {config[hisat2_thread]} -q -x {params.index} \
+        -1 {input.transcript_R1} -2 {input.transcript_R2} -S {output.sam} --summary-file {params.summary_txt}"
+        
+        
+rule samtools_sort:
+    input:
+        sam = config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_genome_map/{RNAseq_stage}_{RNAseq_replicates}/{RNAseq_stage}_{RNAseq_replicates}.sam"
+    output:
+        bam = config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_genome_map/{RNAseq_stage}_{RNAseq_replicates}/{RNAseq_stage}_{RNAseq_replicates}.bam"
+    envmodules:
+        "samtools/1.10"
+    shell:
+        "samtools view -bS {input.sam} | samtools sort -o {output.bam} "
+        " && rm {input.sam}"
+
+
+rule samtools_index:
+    input:
+        bam = config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_genome_map/{RNAseq_stage}_{RNAseq_replicates}/{RNAseq_stage}_{RNAseq_replicates}.bam"
+    output:
+        bai = config["OUTDIR_BASE"] + "/" + config["date"] + "/RNAseq_genome_map/{RNAseq_stage}_{RNAseq_replicates}/{RNAseq_stage}_{RNAseq_replicates}.bam.bai"
+    envmodules:
+        "samtools/1.10"
+    shell:
+        "samtools index {input.bam}"
